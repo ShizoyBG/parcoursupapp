@@ -532,6 +532,8 @@ with explorer_tab:
             if df_year.empty:
                 continue
             df_year = enrich_metrics(df_year)
+            if "session" in df_year.columns:
+                df_year = df_year.rename(columns={"session": "Année"})
             df_year["Année"] = year
             frames.append(df_year)
         except Exception as exc:
@@ -604,13 +606,13 @@ with explorer_tab:
     display_table = representative.copy()
     if show_raw:
         st.subheader("Table brute")
-        raw_display = display_table.rename(columns=FRIENDLY_NAMES)
+        raw_display = display_table.drop(columns=["session"], errors="ignore").rename(columns=FRIENDLY_NAMES)
         cols_to_show = [FRIENDLY_NAMES.get(c, c) for c in table_cols if c in display_table.columns or c in FRIENDLY_NAMES]
         cols_to_show = [c for c in cols_to_show if c in raw_display.columns]
         if cols_to_show:
             st.dataframe(raw_display[cols_to_show], use_container_width=True, hide_index=True)
         else:
-            st.dataframe(raw_display.rename(columns=FRIENDLY_NAMES), use_container_width=True, hide_index=True)
+            st.dataframe(raw_display, use_container_width=True, hide_index=True)
 
     st.subheader("Tableau résumé")
     summary_display = summary.rename(columns=FRIENDLY_NAMES)
@@ -631,7 +633,7 @@ with explorer_tab:
 
     st.divider()
     with st.expander("Voir les données détaillées de la formation"):
-        details = representative.rename(columns=FRIENDLY_NAMES)
+        details = representative.drop(columns=["session"], errors="ignore").rename(columns=FRIENDLY_NAMES)
         show_cols = [
             "Année",
             "Établissement",
