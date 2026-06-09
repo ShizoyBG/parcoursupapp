@@ -10,14 +10,13 @@ import requests
 import streamlit as st
 
 
-st.set_page_config(page_title="Parcoursup Explorer", page_icon="🎓", layout="wide")
+st.set_page_config(page_title="Parcoursup Data", layout="wide")
 
 BASE_URL = "https://data.enseignementsup-recherche.gouv.fr/api/explore/v2.1/catalog/datasets"
 YEARS = [2021, 2022, 2023, 2024, 2025]
 DEFAULT_YEARS = [2022, 2023, 2024, 2025]
 LATEST_YEAR = 2025
 
-# 2025 = dataset sans suffixe. 2020-2024 = suffixe _YYYY.
 DATASET_BY_YEAR = {
     2021: "fr-esr-parcoursup_2021",
     2022: "fr-esr-parcoursup_2022",
@@ -26,8 +25,6 @@ DATASET_BY_YEAR = {
     2025: "fr-esr-parcoursup",
 }
 
-# Champs les plus utiles. On garde une version riche, puis des variantes réduites
-# pour survivre aux années où certains champs n’existent pas.
 CORE_FIELDS = [
     "session",
     "cod_aff_form",
@@ -92,24 +89,12 @@ SELECT_VARIANTS: List[List[str]] = [
     ],
 ]
 
-SEARCH_FIELDS = [
-    "cod_aff_form",
-    "g_ea_lib_vx",
-    "lib_for_voe_ins",
-    "ville_etab",
-    "dep_lib",
-    "region_etab_aff",
-    "acad_mies",
-    "select_form",
-    "fili",
-]
-
 FRIENDLY_NAMES = {
     "session": "Année",
-    "cod_aff_form": "Code formation",
+    "cod_aff_form": "Référence formation",
     "g_ea_lib_vx": "Établissement",
     "lib_for_voe_ins": "Formation",
-    "contrat_etab": "Statut de l’établissement",
+    "contrat_etab": "Statut",
     "cod_uai": "Code UAI",
     "dep_lib": "Département",
     "region_etab_aff": "Région",
@@ -121,64 +106,29 @@ FRIENDLY_NAMES = {
     "voe_tot": "Candidatures totales",
     "nb_voe_pp": "Candidatures phase principale",
     "nb_cla_pp": "Candidats classés",
-    "prop_tot": "Candidats ayant reçu une proposition",
-    "acc_tot": "Candidats admis",
-    "lib_grp1": "Groupe 1",
-    "ran_grp1": "Dernier rang appelé (groupe 1 / phase principale)",
-    "lib_grp2": "Groupe 2",
-    "ran_grp2": "Dernier rang appelé (groupe 2)",
-    "lib_grp3": "Groupe 3",
-    "ran_grp3": "Dernier rang appelé (groupe 3)",
-    "somme_rangs": "Somme des rangs (g1+g2+g3)",
-    "moyenne_rangs": "Moyenne des rangs (g1+g2+g3)",
-    "dernier_rang_max": "Dernier rang le plus loin",
-    "tension": "Tension (candidatures / places)",
-    "appels_par_place": "Propositions par place",
-    "part_appelee": "Part des candidatures ayant reçu une proposition",
-    "classement_par_appels": "Candidats classés / propositions",
+    "prop_tot": "Propositions",
+    "acc_tot": "Admis",
+    "ran_grp1": "Dernier rang phase principale",
+    "ran_grp2": "Dernier rang phase complémentaire",
+    "ran_grp3": "Dernier rang phase 3",
+    "somme_rangs": "Dernier rang final",
+    "moyenne_rangs": "Moyenne des rangs",
+    "dernier_rang_max": "Rang max",
+    "tension": "Tension",
+    "appels_par_place": "Appels/place",
+    "part_appelee": "% appelés",
+    "classement_par_appels": "Classés/appels",
 }
-
-DISPLAY_METRICS = [
-    "capa_fin",
-    "voe_tot",
-    "nb_voe_pp",
-    "nb_cla_pp",
-    "prop_tot",
-    "acc_tot",
-    "ran_grp1",
-    "ran_grp2",
-    "ran_grp3",
-    "somme_rangs",
-    "moyenne_rangs",
-    "dernier_rang_max",
-    "tension",
-    "appels_par_place",
-    "part_appelee",
-    "classement_par_appels",
-]
 
 CATEGORY_GROUPS = {
     "Places et demande": ["capa_fin", "voe_tot", "nb_voe_pp"],
     "Classement et appels": ["nb_cla_pp", "prop_tot", "acc_tot", "ran_grp1", "ran_grp2", "ran_grp3"],
-    "Synthèse des rangs": ["somme_rangs", "moyenne_rangs", "dernier_rang_max"],
+    "Synthèse": ["somme_rangs", "moyenne_rangs", "dernier_rang_max"],
     "Ratios": ["tension", "appels_par_place", "part_appelee", "classement_par_appels"],
-    "Contexte": ["g_ea_lib_vx", "lib_for_voe_ins", "ville_etab", "dep_lib", "region_etab_aff", "acad_mies", "select_form", "contrat_etab"],
 }
-
-SEARCHABLE_TEXT_COLUMNS = [
-    "g_ea_lib_vx",
-    "lib_for_voe_ins",
-    "ville_etab",
-    "dep_lib",
-    "region_etab_aff",
-    "acad_mies",
-    "select_form",
-    "fili",
-]
 
 
 # ---------- API helpers ----------
-
 
 @st.cache_data(show_spinner=False, ttl=60 * 60 * 24)
 def fetch_all_records(year: int, where: str, select: Sequence[str]) -> pd.DataFrame:
@@ -186,7 +136,6 @@ def fetch_all_records(year: int, where: str, select: Sequence[str]) -> pd.DataFr
     dataset = DATASET_BY_YEAR[year]
     url = f"{BASE_URL}/{dataset}/records"
 
-    # Try the requested select first, then narrower variants if the schema complains.
     select_variants: List[List[str]] = [list(select)]
     for variant in SELECT_VARIANTS:
         if variant not in select_variants:
@@ -217,13 +166,12 @@ def fetch_all_records(year: int, where: str, select: Sequence[str]) -> pd.DataFr
             if rows:
                 return pd.DataFrame(rows)
 
-            # No rows for this year/query: return immediately.
             return pd.DataFrame()
 
         except requests.HTTPError as exc:
             status = exc.response.status_code if exc.response is not None else None
             if status == 400:
-                last_error = f"{year}: schéma incompatible pour les champs demandés, tentative suivante."
+                last_error = f"{year}: schéma incompatible."
                 continue
             raise
         except requests.RequestException as exc:
@@ -235,39 +183,18 @@ def fetch_all_records(year: int, where: str, select: Sequence[str]) -> pd.DataFr
     return pd.DataFrame()
 
 
-@st.cache_data(show_spinner=False, ttl=60 * 60 * 24)
-def search_formations(year: int, keyword: str, limit: int = 10) -> pd.DataFrame:
-    keyword = keyword.strip().replace('"', '\\"')
-    if not keyword:
-        return pd.DataFrame()
-
-    clauses = [f'{col} ilike "%{keyword}%"' for col in SEARCHABLE_TEXT_COLUMNS]
-    where = " OR ".join(clauses)
-    df = fetch_all_records(year, where, select=["cod_aff_form", "g_ea_lib_vx", "lib_for_voe_ins", "ville_etab", "dep_lib", "select_form"])
-    if df.empty:
-        return df
-
-    # Deduplicate and make the result easy to read.
-    if "cod_aff_form" in df.columns:
-        df = df.drop_duplicates(subset=["cod_aff_form", "g_ea_lib_vx", "lib_for_voe_ins"])
-    return df.head(limit).reset_index(drop=True)
-
-
 # ---------- Parsing / cleaning ----------
-
 
 def extract_code(text: str) -> Optional[str]:
     if not text:
         return None
     t = text.strip()
 
-    # Prefer explicit parameters when the user pastes a Parcoursup URL.
     for pat in [r"cod_aff_form[=:/?&\- ]+(\d+)", r"g_ea_cod[=:/?&\- ]+(\d+)"]:
         m = re.search(pat, t, flags=re.IGNORECASE)
         if m:
             return m.group(1)
 
-    # Try URL query parameters.
     try:
         parsed = urlparse(t)
         qs = parse_qs(parsed.query)
@@ -279,7 +206,6 @@ def extract_code(text: str) -> Optional[str]:
     except Exception:
         pass
 
-    # Fall back to the first 3-6 digit number.
     m = re.search(r"\b(\d{3,6})\b", t)
     return m.group(1) if m else None
 
@@ -301,7 +227,6 @@ def format_int(value: Optional[float]) -> str:
 
 # ---------- Business logic ----------
 
-
 def enrich_metrics(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
@@ -311,7 +236,6 @@ def enrich_metrics(df: pd.DataFrame) -> pd.DataFrame:
         if col in out.columns:
             out[col] = numeric(out[col])
 
-    # Remove pure empty lines if any.
     if "cod_aff_form" in out.columns:
         out = out[out["cod_aff_form"].notna()]
 
@@ -326,17 +250,20 @@ def enrich_metrics(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def pick_representative_rows(df: pd.DataFrame) -> pd.DataFrame:
-    """Keep one row per year. We prefer the row with the biggest values, which usually
-    corresponds to the main/complete line for the formation when several rows exist."""
-    if df.empty:
+    """Pour chaque année, garde seulement la ligne avec le plus de candidatures."""
+    if df.empty or "Année" not in df.columns:
         return df
-
-    sort_cols = [c for c in ["Année", "voe_tot", "prop_tot", "nb_cla_pp", "capa_fin"] if c in df.columns]
-    if not sort_cols:
-        return df
-
-    temp = df.sort_values(by=sort_cols, ascending=[True] + [False] * (len(sort_cols) - 1))
-    return temp.groupby("Année", as_index=False).first()
+    
+    # Pour chaque année, trouver l'index de la ligne avec le plus de voe_tot (candidatures)
+    if "voe_tot" in df.columns:
+        idx = df.groupby("Année")["voe_tot"].idxmax()
+        return df.loc[idx].reset_index(drop=True)
+    elif "prop_tot" in df.columns:
+        idx = df.groupby("Année")["prop_tot"].idxmax()
+        return df.loc[idx].reset_index(drop=True)
+    else:
+        # Si ni voe_tot ni prop_tot, on retourne la première ligne par année
+        return df.groupby("Année", as_index=False).first().reset_index(drop=True)
 
 
 def aggregate_by_year(df: pd.DataFrame) -> pd.DataFrame:
@@ -372,157 +299,78 @@ def metric_card(label: str, value: Optional[float], help_text: Optional[str] = N
 
 # ---------- Session state ----------
 
-if "formation_code" not in st.session_state:
-    st.session_state.formation_code = "4329"
-if "formation_query" not in st.session_state:
-    st.session_state.formation_query = "CPBx"
-if "search_year" not in st.session_state:
-    st.session_state.search_year = 2025
-if "keyword_results" not in st.session_state:
-    st.session_state.keyword_results = pd.DataFrame()
+if "formation_url" not in st.session_state:
+    st.session_state.formation_url = ""
 
 
 # ---------- UI ----------
 
-st.title("Parcoursup Explorer")
-st.caption("Un tableau simple pour comparer les formations Parcoursup sans jargon inutile.")
+st.title("Parcoursup - Données")
+st.caption("Colle l'URL de la fiche Parcoursup et tu vois les stats")
 
-explorer_tab, find_tab, help_tab = st.tabs(["Explorer", "Trouver le code", "Aide"])
+url_tab, data_tab = st.tabs(["URL", "Données"])
 
+# Sidebar parameters
 with st.sidebar:
-    st.header("Affichage")
-    years = st.multiselect("Années à comparer", YEARS, default=DEFAULT_YEARS)
-    selected_groups = st.multiselect(
-        "Catégories à afficher",
-        list(CATEGORY_GROUPS.keys()),
-        default=["Places et demande", "Classement et appels", "Ratios"],
-    )
-    show_raw = st.checkbox("Afficher la table brute", value=False)
+    st.header("Paramètres")
+    years = st.multiselect("Années", YEARS, default=DEFAULT_YEARS)
+    show_raw = st.checkbox("Tableau brut")
     one_row_per_year = st.checkbox("Une ligne par année", value=True)
-    st.divider()
-    st.caption("Les données sont récupérées depuis l’open data Parcoursup, avec cache pour aller plus vite.")
 
-selected_metric_keys: List[str] = []
-for group in selected_groups:
-    selected_metric_keys.extend(CATEGORY_GROUPS[group])
-selected_metric_keys = list(dict.fromkeys(selected_metric_keys))  # keep order, remove duplicates
+selected_metric_keys: List[str] = ["capa_fin", "voe_tot", "nb_voe_pp", "nb_cla_pp", "prop_tot", "acc_tot", "ran_grp1", "tension", "appels_par_place"]
 
-with find_tab:
-    st.subheader("Trouver une formation")
-    st.write("Tu peux entrer un code, coller une URL Parcoursup, ou chercher par mot-clé.")
+# URL Tab
+with url_tab:
+    st.markdown("### Colle l'URL")
+    st.write("Va sur parcoursup.fr, trouve la fiche, copie l'URL et colle-la ici.")
+    
+    with st.form("url_form"):
+        raw_input = st.text_area(
+            "URL",
+            value=st.session_state.formation_url,
+            placeholder="https://www.parcoursup.fr/...",
+            height=100,
+        )
+        submitted = st.form_submit_button("Charger", use_container_width=True)
 
-    find_mode = st.radio(
-        "Méthode",
-        ["Code / URL", "Mot-clé"],
-        horizontal=True,
-        label_visibility="visible",
-    )
+    if submitted:
+        url = raw_input.strip()
+        code = extract_code(url)
+        if code:
+            st.session_state.formation_url = url
+            st.success("URL chargée ! Va dans l'onglet Données.")
+        else:
+            st.error("URL pas reconnue")
 
-    if find_mode == "Code / URL":
-        with st.form("code_form"):
-            raw_input = st.text_input(
-                "Code ou URL Parcoursup",
-                value=st.session_state.formation_code,
-                help="Colle un code comme 4329, ou une URL de fiche Parcoursup.",
-            )
-            submitted = st.form_submit_button("Utiliser cette formation")
+    st.write("")
+    st.markdown("""
+### Comment faire :
+1. Va sur parcoursup.fr
+2. Cherche une formation
+3. Copie l'URL de la barre du navigateur
+4. Colle-la ci-dessus
+5. Clique sur Données
+    """)
 
-        if submitted:
-            code = extract_code(raw_input)
-            if code:
-                st.session_state.formation_code = code
-                st.success(f"Code reconnu : {code}")
-            else:
-                st.error("Impossible d’extraire un code de ce texte.")
 
-    else:
-        with st.form("keyword_form"):
-            st.session_state.search_year = st.selectbox("Année de recherche", YEARS, index=YEARS.index(st.session_state.search_year) if st.session_state.search_year in YEARS else len(YEARS) - 1)
-            keyword = st.text_input("Mot-clé", value=st.session_state.formation_query, help="Exemple : CPBx, ENSEIRB, licence maths, BUT info...")
-            search_clicked = st.form_submit_button("Rechercher")
-
-        if search_clicked:
-            st.session_state.formation_query = keyword
-            try:
-                st.session_state.keyword_results = search_formations(st.session_state.search_year, keyword)
-            except Exception as exc:
-                st.session_state.keyword_results = pd.DataFrame()
-                st.error(f"Recherche impossible : {exc}")
-
-        results = st.session_state.keyword_results
-        if isinstance(results, pd.DataFrame) and not results.empty:
-            view = results.copy()
-            view = view.rename(columns={
-                "cod_aff_form": "Code",
-                "g_ea_lib_vx": "Établissement",
-                "lib_for_voe_ins": "Formation",
-                "ville_etab": "Ville",
-                "dep_lib": "Département",
-                "select_form": "Sélectivité",
-            })
-            st.dataframe(view, use_container_width=True, hide_index=True)
-
-            options = []
-            mapping = {}
-            for _, row in results.iterrows():
-                code = str(row.get("cod_aff_form", "")).strip()
-                establishment = str(row.get("g_ea_lib_vx", "")).strip()
-                formation = str(row.get("lib_for_voe_ins", "")).strip()
-                city = str(row.get("ville_etab", "")).strip()
-                label = f"{code} — {establishment} — {formation} — {city}"
-                options.append(label)
-                mapping[label] = code
-
-            chosen = st.selectbox("Choisir un résultat", options)
-            if st.button("Utiliser cette formation"):
-                st.session_state.formation_code = mapping[chosen]
-                st.success(f"Formation chargée : {st.session_state.formation_code}")
-        elif search_clicked:
-            st.warning("Aucun résultat trouvé pour ce mot-clé.")
-
-    st.divider()
-    st.subheader("Aide rapide")
-    st.markdown(
-        """
-- Le plus simple : colle le **code formation**.
-- Tu peux aussi coller l’**URL de la fiche Parcoursup** : le code est extrait automatiquement.
-- Tu peux rechercher par nom d’école, ville, diplôme, ou mot-clé.
-- Si une formation a plusieurs lignes par année, l’app prend par défaut la ligne la plus représentative.
-        """
-    )
-
-with help_tab:
-    st.subheader("Mode d’emploi")
-    st.markdown(
-        """
-**1. Trouver le code**
-- Va sur la fiche Parcoursup de la formation.
-- Copie le code si tu le vois.
-- Sinon, colle l’URL dans l’onglet **Trouver le code**.
-
-**2. Comparer les années**
-- Coche les années à garder dans la barre latérale.
-- Coche les catégories que tu veux voir dans le tableau et le graphique.
-
-**3. Lire les indicateurs**
-- **Places** = capacité d’accueil.
-- **Candidatures totales** = demande globale.
-- **Candidats ayant reçu une proposition** = personnes appelées.
-- **Dernier rang appelé (groupe 1)** = profondeur d’appel en phase principale.
-- **Somme des rangs** = `ran_grp1 + ran_grp2 + ran_grp3`.
-        """
-    )
-
-with explorer_tab:
-    code = st.session_state.formation_code
-    st.subheader(f"Formation chargée : {code}")
+# Data Tab
+with data_tab:
+    formation_url = st.session_state.formation_url
+    
+    if not formation_url:
+        st.info("D'abord colle une URL dans l'onglet URL.")
+        st.stop()
 
     if not years:
-        st.info("Choisis au moins une année dans la barre latérale.")
+        st.warning("Sélectionne au moins une année dans la barre latérale.")
+        st.stop()
+
+    code = extract_code(formation_url)
+    if not code:
+        st.error("Impossible de lire cette URL. Assure-toi que c'est un lien Parcoursup.")
         st.stop()
 
     query_where = f"cod_aff_form={code}"
-
     frames: List[pd.DataFrame] = []
     errors: List[str] = []
 
@@ -540,17 +388,17 @@ with explorer_tab:
             errors.append(f"{year}: {exc}")
 
     if errors:
-        st.warning("Certaines années n'ont pas pu être chargées : " + " | ".join(errors))
+        st.warning(" | ".join(errors))
 
     if not frames:
-        st.warning("Aucune donnée trouvée pour ce code.")
+        st.error("Pas de données trouvées pour cette formation.")
         st.stop()
 
     raw = pd.concat(frames, ignore_index=True)
     representative = pick_representative_rows(raw) if one_row_per_year else raw.copy()
     summary = aggregate_by_year(representative)
 
-    # Canonical label
+    # Header
     latest_row = representative.sort_values("Année").iloc[-1]
     establishment = latest_row.get("g_ea_lib_vx", "")
     formation = latest_row.get("lib_for_voe_ins", "")
@@ -558,116 +406,87 @@ with explorer_tab:
     subtitle_line = formation if formation and formation != title_line else ""
 
     if title_line:
-        st.markdown(f"### {title_line}")
+        st.markdown(f"## {title_line}")
     if subtitle_line:
         st.caption(subtitle_line)
 
-    # Friendly headline cards
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
-    with c1:
-        metric_card("Places", latest_row.get("capa_fin"), "Capacité d’accueil")
-    with c2:
-        metric_card("Candidatures totales", latest_row.get("voe_tot"), "Demande totale")
-    with c3:
-        metric_card("Phase principale", latest_row.get("nb_voe_pp"), "Demande en phase principale")
-    with c4:
-        metric_card("Propositions", latest_row.get("prop_tot"), "Personnes ayant reçu au moins une proposition")
-    with c5:
-        metric_card("Dernier rang appelé", latest_row.get("ran_grp1"), "Groupe 1 / phase principale")
-    with c6:
-        metric_card("Somme des rangs", latest_row.get("somme_rangs"), "ran_grp1 + ran_grp2 + ran_grp3")
+    st.divider()
+
+    # Key metrics cards
+    st.subheader("Stats principales (dernière année)")
+    col1, col2, col3, col4, col5 = st.columns(5)
+    with col1:
+        metric_card("Places", latest_row.get("capa_fin"))
+    with col2:
+        metric_card("Candidatures", latest_row.get("voe_tot"))
+    with col3:
+        metric_card("Propositions", latest_row.get("prop_tot"))
+    with col4:
+        metric_card("Dernier rang phase principale", latest_row.get("ran_grp1"))
+    with col5:
+        metric_card("Tension", latest_row.get("tension"), "candidatures/places")
 
     st.divider()
+
+    # Average stats
     st.subheader("Moyennes sur les années sélectionnées")
-
-    # Small KPIs from averages.
     avg_row = summary.mean(numeric_only=True)
-    a1, a2, a3, a4, a5, a6 = st.columns(6)
-    with a1:
-        metric_card("Places moyennes", avg_row.get("capa_fin"))
-    with a2:
-        metric_card("Candidatures moyennes", avg_row.get("voe_tot"))
-    with a3:
-        metric_card("Propositions moyennes", avg_row.get("prop_tot"))
-    with a4:
-        metric_card("Dernier rang moyen", avg_row.get("ran_grp1"))
-    with a5:
-        metric_card("Somme rangs moyenne", avg_row.get("somme_rangs"))
-    with a6:
-        metric_card("Tension moyenne", avg_row.get("tension"), "candidatures / places")
+    avg_col1, avg_col2, avg_col3, avg_col4, avg_col5 = st.columns(5)
+    with avg_col1:
+        metric_card("Places moy", avg_row.get("capa_fin"))
+    with avg_col2:
+        metric_card("Candidatures moy", avg_row.get("voe_tot"))
+    with avg_col3:
+        metric_card("Propositions moy", avg_row.get("prop_tot"))
+    with avg_col4:
+        metric_card("Rang phase pple moy", avg_row.get("ran_grp1"))
+    with avg_col5:
+        metric_card("Tension moy", avg_row.get("tension"))
 
-    st.caption("Les moyennes sont calculées sur les années cochées, après récupération des données de chaque année.")
+    st.divider()
 
-    # Pick columns to show
-    table_base_cols = ["Année", "g_ea_lib_vx", "lib_for_voe_ins"]
-    table_metric_cols = selected_metric_keys
-    table_cols = list(dict.fromkeys(table_base_cols + table_metric_cols))
-
-    display_table = representative.copy()
-    if show_raw:
-        st.subheader("Table brute")
-        raw_display = display_table.drop(columns=["session"], errors="ignore").rename(columns=FRIENDLY_NAMES)
-        cols_to_show = [FRIENDLY_NAMES.get(c, c) for c in table_cols if c in display_table.columns or c in FRIENDLY_NAMES]
-        cols_to_show = [c for c in cols_to_show if c in raw_display.columns]
-        if cols_to_show:
-            st.dataframe(raw_display[cols_to_show], use_container_width=True, hide_index=True)
-        else:
-            st.dataframe(raw_display, use_container_width=True, hide_index=True)
-
-    st.subheader("Tableau résumé")
-    summary_display = summary.rename(columns=FRIENDLY_NAMES)
-    cols_to_show = [FRIENDLY_NAMES.get(c, c) for c in ["Année"] + selected_metric_keys if FRIENDLY_NAMES.get(c, c) in summary_display.columns]
-    if not cols_to_show:
-        cols_to_show = [c for c in summary_display.columns if c != "Année"]
-        cols_to_show = ["Année"] + cols_to_show if "Année" in summary_display.columns else cols_to_show
+    # Summary table with averages
+    st.subheader("Évolution par année")
+    
+    # Créer la ligne de moyennes avec les mêmes colonnes que summary
+    avg_row_dict = summary.mean(numeric_only=True).to_dict()
+    avg_row_dict["Année"] = "Moyennes"
+    
+    # Fusionner summary avec la ligne de moyennes
+    summary_with_avg = pd.concat([summary, pd.DataFrame([avg_row_dict])], ignore_index=True)
+    
+    # Renommer une seule fois
+    summary_display = summary_with_avg.rename(columns=FRIENDLY_NAMES)
+    
+    cols_to_show = ["Année", "Places", "Candidatures totales", "Propositions", "Dernier rang phase principale", "Dernier rang final", "Tension"]
+    cols_to_show = [c for c in cols_to_show if c in summary_display.columns]
     st.dataframe(summary_display[cols_to_show], use_container_width=True, hide_index=True)
 
     st.divider()
+
+    # Chart
     st.subheader("Graphique")
-    chart_metric_names = [FRIENDLY_NAMES.get(k, k) for k in selected_metric_keys if FRIENDLY_NAMES.get(k, k) in summary_display.columns]
-    if chart_metric_names:
-        chart_df = summary_display.set_index("Année")[chart_metric_names]
+    chart_cols = ["Places", "Candidatures totales", "Propositions"]
+    chart_cols = [c for c in chart_cols if c in summary_display.columns]
+    if chart_cols:
+        chart_df = summary_display.set_index("Année")[chart_cols]
         st.line_chart(chart_df)
     else:
-        st.info("Choisis au moins une catégorie à afficher pour voir un graphique.")
+        st.info("Pas de données à afficher.")
+
+    if show_raw:
+        st.divider()
+        st.subheader("Tableau complet")
+        display_table = representative.drop(columns=["session"], errors="ignore").rename(columns=FRIENDLY_NAMES)
+        st.dataframe(display_table, use_container_width=True, hide_index=True)
 
     st.divider()
-    with st.expander("Voir les données détaillées de la formation"):
-        details = representative.drop(columns=["session"], errors="ignore").rename(columns=FRIENDLY_NAMES)
-        show_cols = [
-            "Année",
-            "Établissement",
-            "Formation",
-            "Places",
-            "Candidatures totales",
-            "Candidatures phase principale",
-            "Candidats classés",
-            "Candidats ayant reçu une proposition",
-            "Candidats admis",
-            "Dernier rang appelé (groupe 1 / phase principale)",
-            "Dernier rang appelé (groupe 2)",
-            "Dernier rang appelé (groupe 3)",
-            "Somme des rangs (g1+g2+g3)",
-            "Moyenne des rangs (g1+g2+g3)",
-            "Dernier rang le plus loin",
-            "Sélectivité",
-            "Filière",
-            "Ville",
-            "Département",
-            "Région",
-            "Statut de l’établissement",
-        ]
-        show_cols = [c for c in show_cols if c in details.columns]
-        st.dataframe(details[show_cols], use_container_width=True, hide_index=True)
-
-    st.divider()
-    st.markdown(
-        """
-**Lecture simple**
-- Plus les **candidatures** sont grandes par rapport aux **places**, plus la formation est demandée.
-- **Propositions** = personnes à qui la formation a dit oui à un moment de la campagne.
-- **Dernier rang appelé** = jusqu’où la formation a dû descendre dans son classement pour faire ses appels.
-- **Somme des rangs** = `ran_grp1 + ran_grp2 + ran_grp3`.
-        """
-    )
-
+    st.markdown("""
+### C'est quoi ces chiffres
+- **Places** = nombre de places disponibles
+- **Candidatures** = nombre de candidats qui se sont inscrits
+- **Propositions** = nombre d'admis (ceux qui ont eu oui)
+- **Dernier rang phase principale** = jusqu'où ils ont appelé dans leur classement (plus bas = plus de monde appelé)
+- **Dernier rang phase complémentaire** = idem pour la phase 2
+- **Tension** = candidatures divisé par places (plus c'est élevé, plus c'est demandé)
+    """)
